@@ -1,12 +1,12 @@
 from arreglo import arreglo, reloj
-from cola import Cola
+from cola import ColaTemporizada
 
 
 class GestorProcesos:
     def __init__(self, procesos=()):
         self.inactivos = list(procesos)
         self.listos = arreglo()
-        self.suspendidos = Cola()
+        self.suspendidos = ColaTemporizada()
         self.terminados = []
         self.ejecutando = None
         self.reloj = reloj()
@@ -56,9 +56,13 @@ class GestorProcesos:
     def bloquear_actual(self, duracion):
         if self.ejecutando is None:
             return False
+        if type(duracion) is not int:
+            raise TypeError("La duración del bloqueo debe ser un entero.")
+        if duracion <= 0:
+            raise ValueError("La duración del bloqueo debe ser positiva.")
         proceso = self.ejecutando
         proceso.estado = "suspendido"
-        self.suspendidos.encolar((proceso, duracion))
+        self.suspendidos.encolar(proceso, self.reloj.tiempo + duracion)
         self.ejecutando = None
         self._quantum_restante = 0
         return True
@@ -92,12 +96,6 @@ class GestorProcesos:
         return proceso_ejecutado
 
     def _avanzar_esperas_es(self):
-        cantidad = len(self.suspendidos)
-        for _ in range(cantidad):
-            proceso, restante = self.suspendidos.desencolar()
-            restante -= 1
-            if restante == 0:
-                proceso.estado = "listo"
-                self.listos.agregar(proceso)
-            else:
-                self.suspendidos.encolar((proceso, restante))
+        for proceso in self.suspendidos.desencolar_vencidos(self.reloj.tiempo):
+            proceso.estado = "listo"
+            self.listos.agregar(proceso)

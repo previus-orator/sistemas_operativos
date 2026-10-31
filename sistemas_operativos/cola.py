@@ -1,3 +1,6 @@
+from heapq import heappop, heappush
+from itertools import count
+
 from nodos import NodoLSE
 
 class Cola:
@@ -89,3 +92,31 @@ class Cola:
             nodos += 1
             nodo_actual = nodo_actual.sig
         return nodos
+
+
+class ColaTemporizada:
+    "Cola de prioridad para mejorar la cosa de suspendidos supongo"
+
+    def __init__(self):
+        self.__elementos = []
+        self.__secuencia = count()
+
+    def es_vacia(self):
+        return not self.__elementos
+
+    def encolar(self, dato, tiempo_despertar):
+        heappush(
+            self.__elementos,
+            (tiempo_despertar, next(self.__secuencia), dato),
+        )
+        return True
+
+    def desencolar_vencidos(self, tiempo_actual):
+        vencidos = []
+        while self.__elementos and self.__elementos[0][0] <= tiempo_actual:
+            _, _, dato = heappop(self.__elementos)
+            vencidos.append(dato)
+        return vencidos
+
+    def __len__(self):
+        return len(self.__elementos)
