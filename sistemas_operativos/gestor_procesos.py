@@ -54,8 +54,6 @@ class GestorProcesos:
         return self.ejecutando
 
     def bloquear_actual(self, duracion):
-        if not isinstance(duracion, int) or isinstance(duracion, bool) or duracion <= 0:
-            raise ValueError("La duración de E/S debe ser un entero positivo.")
         if self.ejecutando is None:
             return False
         proceso = self.ejecutando

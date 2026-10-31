@@ -53,7 +53,7 @@ def main():
         if opción in {"ejecutar", "Ejecutar", "EJECUTAR"}:
             if not seleccionados:
                 print("No hay procesos añadidos. Añade un proceso pendejo.")
-                
+                continue
 
             gestor = GestorProcesos(seleccionados)
             gestor.admitir_todos()
@@ -85,6 +85,7 @@ def main():
                 proceso.estado = "inactivo"
                 Programas.append(proceso)
             seleccionados.clear()
+            continue
         #amooooor, es tan corto el cariño, pero mi amor es tan largo el olvido *inserte ardilla pidiendo 4 de asada*
 
         proceso_seleccionado = next(
@@ -96,7 +97,7 @@ def main():
         )
         if proceso_seleccionado is None:
             print("Escribe bien (┬┬﹏┬┬).")
-
+            continue
 
         Programas.remove(proceso_seleccionado)
         proceso_seleccionado.estado = "listo"
