@@ -1,9 +1,11 @@
+
 import time
 
 from programa import programa
 from gestor_procesos import GestorProcesos
 
-PAUSA_SIMULACION = 0.5 #esta en segundos 
+
+PAUSA_SIMULACION = 0.5 
 
 Programas = [
     programa("Steam", 4050, 3, 5, 10),
@@ -32,6 +34,7 @@ def main():
             for proceso in Programas:
                 print(f"- {proceso.nombre} (PID: {proceso.Pid})")
         else:
+
             print("- No hay programas disponibles")
 
         if seleccionados:
@@ -50,7 +53,7 @@ def main():
         if opción in {"ejecutar", "Ejecutar", "EJECUTAR"}:
             if not seleccionados:
                 print("No hay procesos añadidos. Añade un proceso pendejo.")
-                
+                continue
 
             gestor = GestorProcesos(seleccionados)
             gestor.admitir_todos()
@@ -82,7 +85,8 @@ def main():
                 proceso.estado = "inactivo"
                 Programas.append(proceso)
             seleccionados.clear()
-
+            continue
+      
         proceso_seleccionado = next(
             (
                 proceso for proceso in Programas
@@ -92,7 +96,7 @@ def main():
         )
         if proceso_seleccionado is None:
             print("Escribe bien (┬┬﹏┬┬).")
-
+            continue
 
         Programas.remove(proceso_seleccionado)
         proceso_seleccionado.estado = "listo"
