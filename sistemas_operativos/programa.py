@@ -10,4 +10,4 @@ class programa:
         self.Tcpu_original = Tcpu
         self.interactividad = interactividad
         self.estado = "inactivo"
-    #malditos colombianos arruinaron Colombia 
+

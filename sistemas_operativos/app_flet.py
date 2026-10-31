@@ -48,7 +48,11 @@ class VentanaSimulador:
             programa("GIMP", random.randint(1000, 99999), random.randint(1, 5), 2, 10),
             programa("libre office writer", random.randint(1000, 99999), random.randint(1, 5), 2, 10),
         ])
+        self.programas = list(self.gestor.inactivos)
         self.simulacion_activa = False
+        self._vista = None
+        self._estados_programas: dict[int, ft.Text] = {}
+        self._botones_programas: dict[int, ft.FilledButton] = {}
 
         self._actualizar_vistas()
 
@@ -91,6 +95,20 @@ class VentanaSimulador:
         return ft.Text("", size=34, width=48, text_align=ft.TextAlign.CENTER)
 
     def _tarjeta_proceso(self, proceso: programa) -> ft.Control:
+        estado = ft.Text(
+            f"Estado: {proceso.estado}",
+            color=COLOR_SECUNDARIO,
+            size=12,
+        )
+        boton = ft.FilledButton(
+            "Añadir",
+            style=self._estilo_boton(),
+            on_click=lambda _, seleccionado=proceso: self._enviar_a_cola(
+                seleccionado
+            ),
+        )
+        self._estados_programas[proceso.Pid] = estado
+        self._botones_programas[proceso.Pid] = boton
         return ft.Container(
             content=ft.Row(
                 [
@@ -107,17 +125,12 @@ class VentanaSimulador:
                                 color=COLOR_SECUNDARIO,
                                 size=12,
                             ),
+                            estado,
                         ],
                         spacing=2,
                         expand=True,
                     ),
-                    ft.FilledButton(
-                        "Añadir",
-                        style=self._estilo_boton(),
-                        on_click=lambda _, seleccionado=proceso: self._enviar_a_cola(
-                            seleccionado
-                        ),
-                    ),
+                    boton,
                 ],
                 spacing=10,
             ),
@@ -134,6 +147,7 @@ class VentanaSimulador:
             weight=ft.FontWeight.BOLD,
             size=14,
         )
+        self._reloj_texto = reloj
         encabezado = ft.Row(
             [
                 ft.Text(
@@ -149,16 +163,17 @@ class VentanaSimulador:
         )
 
         lista_inactivos = ft.ListView(
-            controls=[self._tarjeta_proceso(p) for p in self.gestor.inactivos],
+            controls=[self._tarjeta_proceso(p) for p in self.programas],
             spacing=8,
             expand=True,
         )
+        self._lista_programas = lista_inactivos
         panel_inactivos = self._tarjeta(
-            " Programas Inactivos",
+            " Programas",
             ft.Column(
                 [
                     ft.Text(
-                        "Añade procesos a la cola de preparación:",
+                        "Procesos precargados:",
                         color=COLOR_CLARO,
                         italic=True,
                     ),
@@ -191,32 +206,36 @@ class VentanaSimulador:
         progreso = max(0, min(progreso, 1))
         porcentaje = round(progreso * 100)
 
+        self._cpu_nombre = ft.Text(
+            cpu_nombre,
+            color=COLOR_CLARO,
+            size=18,
+            weight=ft.FontWeight.BOLD,
+            text_align=ft.TextAlign.CENTER,
+        )
+        self._cpu_detalles = ft.Text(cpu_detalles, color=COLOR_CLARO)
+        self._cpu_progreso = ft.ProgressBar(
+            value=progreso,
+            color="#FFFFFF",
+            bgcolor=COLOR_TARJETA,
+            bar_height=24,
+        )
+        self._cpu_porcentaje = ft.Text(
+            f"{porcentaje}%",
+            color=COLOR_FONDO,
+            size=12,
+            weight=ft.FontWeight.BOLD,
+        )
         panel_cpu = self._tarjeta(
             " Ejecutando CPU",
             ft.Column(
                 [
-                    ft.Text(
-                        cpu_nombre,
-                        color=COLOR_CLARO,
-                        size=18,
-                        weight=ft.FontWeight.BOLD,
-                        text_align=ft.TextAlign.CENTER,
-                    ),
-                    ft.Text(cpu_detalles, color=COLOR_CLARO),
+                    self._cpu_nombre,
+                    self._cpu_detalles,
                     ft.Stack(
                         controls=[
-                            ft.ProgressBar(
-                                value=progreso,
-                                color="#FFFFFF",
-                                bgcolor=COLOR_TARJETA,
-                                bar_height=24,
-                            ),
-                            ft.Text(
-                                f"{porcentaje}%",
-                                color=COLOR_FONDO,
-                                size=12,
-                                weight=ft.FontWeight.BOLD,
-                            ),
+                            self._cpu_progreso,
+                            self._cpu_porcentaje,
                         ],
                         alignment=ft.Alignment(0, 0),
                         height=24,
@@ -291,6 +310,7 @@ class VentanaSimulador:
             spacing=8,
             expand=True,
         )
+        self._lista_preparacion = lista_preparacion
         panel_preparacion = self._tarjeta(
             " Cola de Preparación (Pr > Quantum > PID)",
             lista_preparacion,
@@ -324,8 +344,68 @@ class VentanaSimulador:
         )
 
     def _actualizar_vistas(self) -> None:
-        self.page.clean()
-        self.page.add(self._crear_vista())
+        if self._vista is None:
+            self._vista = self._crear_vista()
+            self.page.add(self._vista)
+
+        self._reloj_texto.value = f"⏱️ Tiempo Reloj: t={self.gestor.reloj.tiempo}"
+
+        proceso_actual = self.gestor.ejecutando
+        if proceso_actual:
+            self._cpu_nombre.value = f" {proceso_actual.nombre}"
+            self._cpu_detalles.value = (
+                f"PID: {proceso_actual.Pid} | Pr: {proceso_actual.Pr} | "
+                f"Q restante: {self.gestor._quantum_restante} | "
+                f"T.cpu: {proceso_actual.Tcpu}"
+            )
+            progreso = (
+                (proceso_actual.Tcpu_original - proceso_actual.Tcpu)
+                / proceso_actual.Tcpu_original
+                if proceso_actual.Tcpu_original > 0
+                else 1
+            )
+        else:
+            self._cpu_nombre.value = "CPU Inactiva / Esperando Procesos"
+            self._cpu_detalles.value = "Ningún proceso en ejecución"
+            progreso = 0
+
+        progreso = max(0, min(progreso, 1))
+        self._cpu_progreso.value = progreso
+        self._cpu_porcentaje.value = f"{round(progreso * 100)}%"
+
+        for proceso in self.programas:
+            self._estados_programas[proceso.Pid].value = f"Estado: {proceso.estado}"
+            self._botones_programas[proceso.Pid].disabled = (
+                proceso not in self.gestor.inactivos
+            )
+
+        self._lista_preparacion.controls = [
+            ft.Container(
+                content=ft.Column(
+                    [
+                        ft.Text(
+                            f" {proceso.nombre}",
+                            weight=ft.FontWeight.BOLD,
+                            color=COLOR_CLARO,
+                        ),
+                        ft.Text(f"PID: {proceso.Pid}", color=COLOR_SECUNDARIO),
+                        ft.Text(
+                            f"Pr: {proceso.Pr} | Q: {proceso.Quantum}",
+                            color=COLOR_SECUNDARIO,
+                        ),
+                        ft.Text(f"T.cpu: {proceso.Tcpu}", color=COLOR_SECUNDARIO),
+                    ],
+                    spacing=3,
+                ),
+                bgcolor=COLOR_COLA,
+                border=ft.Border.all(1, COLOR_BORDE),
+                border_radius=12,
+                padding=14,
+                width=220,
+            )
+            for proceso in self.gestor.listos.arreglo
+            if proceso and proceso.Tcpu > 0
+        ]
         self.page.update()
 
     def _enviar_a_cola(self, proceso: programa) -> None:
@@ -339,11 +419,6 @@ class VentanaSimulador:
     async def _ejecutar_simulacion(self) -> None:
         while self.simulacion_activa:
             await asyncio.sleep(0.9)
-            if (
-                self.gestor.reloj.tiempo % 6 == 0
-                and self.gestor.ejecutando is not None
-            ):
-                self.gestor.bloquear_actual(3)
 
             self.gestor.avanzar()
             if self.gestor.terminados:
