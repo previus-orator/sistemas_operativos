@@ -39,7 +39,6 @@ class GestorProcesos:
             proceso.estado = "listo"
             self.listos.agregar(proceso)
         return True
-
     def admitir_todos(self):
         while self.inactivos:
             self.admitir(self.inactivos[0])
