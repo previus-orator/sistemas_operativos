@@ -1,11 +1,9 @@
-#Aquí empieza este código de cagada 
 import time
 
 from programa import programa
 from gestor_procesos import GestorProcesos
 
-#esto lo puso la IA para que vean como funciona, porque el código lo hacía instantaneamente y no se apreciaba la ejecución 
-PAUSA_SIMULACION = 0.5 #esta en segundos :v
+PAUSA_SIMULACION = 0.5 #esta en segundos 
 
 Programas = [
     programa("Steam", 4050, 3, 5, 10),
@@ -24,7 +22,7 @@ Programas = [
     programa("GIMP", 2001, 5, 2, 10),
     programa("libre office writer", 1029, 5, 2, 10),
 ]
-#mi cara cuándo uTorrent uwu
+
 def main():
     seleccionados = []
 
@@ -34,7 +32,6 @@ def main():
             for proceso in Programas:
                 print(f"- {proceso.nombre} (PID: {proceso.Pid})")
         else:
-            #callate malparido hijueputa de Fabián Gómez 
             print("- No hay programas disponibles")
 
         if seleccionados:
@@ -85,7 +82,6 @@ def main():
                 proceso.estado = "inactivo"
                 Programas.append(proceso)
             seleccionados.clear()
-        #amooooor, es tan corto el cariño, pero mi amor es tan largo el olvido *inserte ardilla pidiendo 4 de asada*
 
         proceso_seleccionado = next(
             (
