@@ -88,7 +88,6 @@ def main():
                 Programas.append(proceso)
             seleccionados.clear()
             continue
-
         proceso_seleccionado = next(
             (
                 proceso for proceso in Programas
