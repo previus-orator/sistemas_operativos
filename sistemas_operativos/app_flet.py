@@ -1,14 +1,9 @@
 import asyncio
-import os
 import random
-from pathlib import Path
 import flet as ft
 from gestor_procesos import GestorProcesos
 from programa import programa
 
-
-BASE_DIR = Path(__file__).resolve().parent
-ASSETS_DIR = BASE_DIR / "assets"
 
 COLOR_FONDO = "#0B1220"
 COLOR_PANEL = "#111B2E"
@@ -26,33 +21,49 @@ COLOR_BORDE = "#26364F"
 class VentanaSimulador:
     def __init__(self, page: ft.Page):
         self.page = page
-        self.page.title = "Simulador de Planificación de Procesos - SO"
+        self.page.title = "Simulador de Planificación de Procesos"
         self.page.bgcolor = COLOR_FONDO
         self.page.padding = 20
         self.page.theme_mode = ft.ThemeMode.DARK
         self.page.theme = ft.Theme(color_scheme_seed=COLOR_ACENTO)
 
+        nombres_programas = (
+            "Steam",
+            "VLC media player",
+            "Visual Studio Code",
+            "YouTube",
+            "Firefox",
+            "umamusume",
+            "Busca minas",
+            "uTorrent",
+            "ThunderBird",
+            "Amarok",
+            "Krita",
+            "virtual box",
+            "GIMP",
+            "libre office writer",
+        )
         self.gestor = GestorProcesos([
-            programa("Steam", random.randint(1000, 99999), random.randint(1, 5), 5, 10),
-            programa("VLC media player",random.randint(1000, 99999), random.randint(1, 5), 3, 6),
-            programa("Visual Studio Code", random.randint(1000, 99999), random.randint(1, 5), 4, 8),
-            programa("YouTube", random.randint(1000, 99999), random.randint(1, 5), 3, 5),
-            programa("Firefox",random.randint(1000, 99999), random.randint(1, 5), 4, 7),
-            programa("umamusume", random.randint(1000, 99999), random.randint(1, 5), 2, 9),
-            programa("Busca minas", random.randint(1000, 99999), random.randint(1, 5), 1, 5),
-            programa("uTorrent", random.randint(1000, 99999), random.randint(1, 5), 5, 9),
-            programa("ThunderBird", random.randint(1000, 99999), random.randint(1, 5), 5, 9),
-            programa("Amarok", random.randint(1000, 99999), random.randint(1, 5), 5, 6),
-            programa("Krita", random.randint(1000, 99999), random.randint(1, 5), 2, 10),
-            programa("virtual box", random.randint(1000, 99999), random.randint(1, 5), 2, 10),
-            programa("GIMP", random.randint(1000, 99999), random.randint(1, 5), 2, 10),
-            programa("libre office writer", random.randint(1000, 99999), random.randint(1, 5), 2, 10),
+            programa(
+                nombre,
+                random.randint(1000, 99999),
+                random.randint(1, 5),
+                random.randint(1, 5),
+                random.randint(5, 10),
+                random.randint(1, 3),
+            )
+            for nombre in nombres_programas
         ])
         self.programas = list(self.gestor.inactivos)
         self.simulacion_activa = False
+        self._procesos_en_simulacion: set[programa] = set()
+        self._ciclos_cpu_para_io: dict[programa, int] = {}
         self._vista = None
         self._estados_programas: dict[int, ft.Text] = {}
         self._botones_programas: dict[int, ft.FilledButton] = {}
+        self._progresos_programas: dict[int, ft.ProgressBar] = {}
+        self._porcentajes_programas: dict[int, ft.Text] = {}
+        self._detalles_programas: dict[int, ft.Column] = {}
 
         self._actualizar_vistas()
 
@@ -73,6 +84,18 @@ class VentanaSimulador:
             expand=expand,
         )
 
+    def _progreso_proceso(self, proceso: programa) -> float:
+        if proceso.Tcpu_original <= 0:
+            return 0
+        return max(
+            0,
+            min(
+                (proceso.Tcpu_original - proceso.Tcpu)
+                / proceso.Tcpu_original,
+                1,
+            ),
+        )
+
     def _estilo_boton(
         self,
         color_fondo: str = COLOR_ACENTO,
@@ -86,19 +109,41 @@ class VentanaSimulador:
             shape=ft.RoundedRectangleBorder(radius=10),
         )
 
-    def _imagen_proceso(self, proceso: programa) -> ft.Control:
-        nombre_archivo = f"{proceso.nombre.lower().replace(' ', '_')}.png"
-        ruta = str(ASSETS_DIR / nombre_archivo)
-
-        if os.path.isfile(ruta):
-            return ft.Image(src=ruta, width=48, height=48, fit=ft.ImageFit.CONTAIN)
-        return ft.Text("", size=34, width=48, text_align=ft.TextAlign.CENTER)
-
     def _tarjeta_proceso(self, proceso: programa) -> ft.Control:
         estado = ft.Text(
             f"Estado: {proceso.estado}",
             color=COLOR_SECUNDARIO,
             size=12,
+        )
+        progreso = self._progreso_proceso(proceso)
+        barra_progreso = ft.ProgressBar(
+            value=progreso,
+            color=COLOR_ACENTO,
+            bgcolor=COLOR_PANEL,
+            bar_height=8,
+        )
+        porcentaje = ft.Text(
+            f"Avance: {round(progreso * 100)}%",
+            color=COLOR_SECUNDARIO,
+            size=11,
+        )
+        detalles = ft.Column(
+            [
+                ft.Text(
+                    f"Interactividad: {proceso.interactividad}/3",
+                    color=COLOR_SECUNDARIO,
+                    size=12,
+                ),
+                ft.Text(
+                    f"PID: {proceso.Pid}",
+                    color=COLOR_SECUNDARIO,
+                    size=12,
+                ),
+                barra_progreso,
+                porcentaje,
+            ],
+            spacing=4,
+            visible=proceso not in self.gestor.inactivos,
         )
         boton = ft.FilledButton(
             "Añadir",
@@ -109,10 +154,12 @@ class VentanaSimulador:
         )
         self._estados_programas[proceso.Pid] = estado
         self._botones_programas[proceso.Pid] = boton
+        self._progresos_programas[proceso.Pid] = barra_progreso
+        self._porcentajes_programas[proceso.Pid] = porcentaje
+        self._detalles_programas[proceso.Pid] = detalles
         return ft.Container(
             content=ft.Row(
                 [
-                    self._imagen_proceso(proceso),
                     ft.Column(
                         [
                             ft.Text(
@@ -120,14 +167,10 @@ class VentanaSimulador:
                                 weight=ft.FontWeight.BOLD,
                                 color=COLOR_CLARO,
                             ),
-                            ft.Text(
-                                f"PID: {proceso.Pid}",
-                                color=COLOR_SECUNDARIO,
-                                size=12,
-                            ),
+                            detalles,
                             estado,
                         ],
-                        spacing=2,
+                        spacing=4,
                         expand=True,
                     ),
                     boton,
@@ -140,9 +183,28 @@ class VentanaSimulador:
             padding=12,
         )
 
+    def _tarjetas_suspendidos(self) -> list[ft.Control]:
+        elementos = self.gestor.suspendidos._ColaTemporizada__elementos
+        suspendidos = sorted(elementos, key=lambda elemento: elemento[:2])
+        return [
+            ft.Container(
+                content=ft.Text(
+                    f" {proceso.nombre} (PID: {proceso.Pid})\n"
+                    f"Restante E/S: "
+                    f"{max(0, despertar - self.gestor.reloj.tiempo)} ciclos",
+                    color=COLOR_SECUNDARIO,
+                ),
+                bgcolor=COLOR_TARJETA,
+                border=ft.Border.all(1, COLOR_BORDE),
+                border_radius=12,
+                padding=10,
+            )
+            for despertar, _, proceso in suspendidos
+        ]
+
     def _crear_vista(self) -> ft.Control:
         reloj = ft.Text(
-            f"⏱️ Tiempo Reloj: t={self.gestor.reloj.tiempo}",
+            f"Tiempo Reloj: t={self.gestor.reloj.tiempo}",
             color=COLOR_CLARO,
             weight=ft.FontWeight.BOLD,
             size=14,
@@ -151,7 +213,7 @@ class VentanaSimulador:
         encabezado = ft.Row(
             [
                 ft.Text(
-                    " Simulador de Planificación de Procesos - Sistemas Operativos",
+                    " Simulador de Planificación de Procesos",
                     color=COLOR_CLARO,
                     size=20,
                     weight=ft.FontWeight.BOLD,
@@ -170,18 +232,7 @@ class VentanaSimulador:
         self._lista_programas = lista_inactivos
         panel_inactivos = self._tarjeta(
             " Programas",
-            ft.Column(
-                [
-                    ft.Text(
-                        "Procesos precargados:",
-                        color=COLOR_CLARO,
-                        italic=True,
-                    ),
-                    lista_inactivos,
-                ],
-                expand=True,
-                spacing=12,
-            ),
+            lista_inactivos,
         )
 
         proceso_actual = self.gestor.ejecutando
@@ -190,14 +241,10 @@ class VentanaSimulador:
             cpu_detalles = (
                 f"PID: {proceso_actual.Pid} | Pr: {proceso_actual.Pr} | "
                 f"Q restante: {self.gestor._quantum_restante} | "
-                f"T.cpu: {proceso_actual.Tcpu}"
+                f"T.cpu: {proceso_actual.Tcpu} | "
+                f"Interactividad: {proceso_actual.interactividad}/3"
             )
-            progreso = (
-                (proceso_actual.Tcpu_original - proceso_actual.Tcpu)
-                / proceso_actual.Tcpu_original
-                if proceso_actual.Tcpu_original > 0
-                else 1
-            )
+            progreso = self._progreso_proceso(proceso_actual)
         else:
             cpu_nombre = "CPU Inactiva / Esperando Procesos"
             cpu_detalles = "Ningún proceso en ejecución"
@@ -247,32 +294,12 @@ class VentanaSimulador:
             ),
         )
 
-        suspendidos = []
-        cantidad_suspendidos = len(self.gestor.suspendidos)
-        for _ in range(cantidad_suspendidos):
-            elemento = self.gestor.suspendidos.desencolar()
-            if elemento is not None:
-                suspendidos.append(elemento)
-                self.gestor.suspendidos.encolar(elemento)
-
         lista_suspendidos = ft.ListView(
-            controls=[
-                ft.Container(
-                    content=ft.Text(
-                        f" {proceso.nombre} (PID: {proceso.Pid})\n"
-                        f"Restante E/S: {restante} ciclos",
-                        color=COLOR_SECUNDARIO,
-                    ),
-                    bgcolor=COLOR_TARJETA,
-                    border=ft.Border.all(1, COLOR_BORDE),
-                    border_radius=12,
-                    padding=10,
-                )
-                for proceso, restante in suspendidos
-            ],
+            controls=self._tarjetas_suspendidos(),
             spacing=8,
             expand=True,
         )
+        self._lista_suspendidos = lista_suspendidos
         panel_suspendidos = self._tarjeta(
             " Suspendidos (E/S - Automático)",
             lista_suspendidos,
@@ -348,7 +375,7 @@ class VentanaSimulador:
             self._vista = self._crear_vista()
             self.page.add(self._vista)
 
-        self._reloj_texto.value = f"⏱️ Tiempo Reloj: t={self.gestor.reloj.tiempo}"
+        self._reloj_texto.value = f"Tiempo Reloj: t={self.gestor.reloj.tiempo}"
 
         proceso_actual = self.gestor.ejecutando
         if proceso_actual:
@@ -356,14 +383,10 @@ class VentanaSimulador:
             self._cpu_detalles.value = (
                 f"PID: {proceso_actual.Pid} | Pr: {proceso_actual.Pr} | "
                 f"Q restante: {self.gestor._quantum_restante} | "
-                f"T.cpu: {proceso_actual.Tcpu}"
+                f"T.cpu: {proceso_actual.Tcpu} | "
+                f"Interactividad: {proceso_actual.interactividad}/3"
             )
-            progreso = (
-                (proceso_actual.Tcpu_original - proceso_actual.Tcpu)
-                / proceso_actual.Tcpu_original
-                if proceso_actual.Tcpu_original > 0
-                else 1
-            )
+            progreso = self._progreso_proceso(proceso_actual)
         else:
             self._cpu_nombre.value = "CPU Inactiva / Esperando Procesos"
             self._cpu_detalles.value = "Ningún proceso en ejecución"
@@ -374,11 +397,22 @@ class VentanaSimulador:
         self._cpu_porcentaje.value = f"{round(progreso * 100)}%"
 
         for proceso in self.programas:
-            self._estados_programas[proceso.Pid].value = f"Estado: {proceso.estado}"
+            self._estados_programas[proceso.Pid].value = (
+                f"Estado: {proceso.estado}"
+            )
+            avance = self._progreso_proceso(proceso)
+            self._progresos_programas[proceso.Pid].value = avance
+            self._porcentajes_programas[proceso.Pid].value = (
+                f"Avance: {round(avance * 100)}%"
+            )
+            self._detalles_programas[proceso.Pid].visible = (
+                proceso not in self.gestor.inactivos
+            )
             self._botones_programas[proceso.Pid].disabled = (
                 proceso not in self.gestor.inactivos
             )
 
+        self._lista_suspendidos.controls = self._tarjetas_suspendidos()
         self._lista_preparacion.controls = [
             ft.Container(
                 content=ft.Column(
@@ -411,24 +445,41 @@ class VentanaSimulador:
     def _enviar_a_cola(self, proceso: programa) -> None:
         if not self.gestor.admitir(proceso):
             return
+        self._procesos_en_simulacion.add(proceso)
+        self._ciclos_cpu_para_io[proceso] = 0
         self._actualizar_vistas()
         if not self.simulacion_activa:
             self.simulacion_activa = True
             self.page.run_task(self._ejecutar_simulacion)
 
     async def _ejecutar_simulacion(self) -> None:
-        while self.simulacion_activa:
+        while self._procesos_en_simulacion:
             await asyncio.sleep(0.9)
 
-            self.gestor.avanzar()
-            if self.gestor.terminados:
-                self.gestor.terminados.clear()
+            proceso_actual = self.gestor.despachar()
+            if (
+                proceso_actual is not None
+                and self._ciclos_cpu_para_io[proceso_actual]
+                >= proceso_actual.interactividad
+                and self.gestor.bloquear_actual(proceso_actual.interactividad)
+            ):
+                self._ciclos_cpu_para_io[proceso_actual] = 0
+            else:
+                proceso_ejecutado = self.gestor.avanzar()
+                if proceso_ejecutado is not None and proceso_ejecutado.Tcpu > 0:
+                    self._ciclos_cpu_para_io[proceso_ejecutado] += 1
 
-            if self.gestor.completo:
-                self.simulacion_activa = False
-                self._actualizar_vistas()
-                return
+            for proceso in self.gestor.terminados:
+                proceso.Tcpu = proceso.Tcpu_original
+                proceso.estado = "inactivo"
+                if proceso not in self.gestor.inactivos:
+                    self.gestor.inactivos.append(proceso)
+                self._procesos_en_simulacion.discard(proceso)
+                self._ciclos_cpu_para_io.pop(proceso, None)
+            self.gestor.terminados.clear()
             self._actualizar_vistas()
+
+        self.simulacion_activa = False
 
 
 def main(page: ft.Page) -> None:
