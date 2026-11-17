@@ -1,50 +1,41 @@
+"""Coordinación de la planificación y los estados de los procesos."""
+
 from arreglo import arreglo, reloj
-from cola import ColaTemporizada
+from cola import Cola
 
 
 class GestorProcesos:
+    """Ejecuta procesos y controla sus colas de listos y suspendidos."""
+
     def __init__(self, procesos=()):
-        self.inactivos = list(procesos)
+        """Agrega el conjunto inicial de procesos a la cola de listos."""
         self.listos = arreglo()
-        self.suspendidos = ColaTemporizada()
+        self.suspendidos = Cola()
         self.terminados = []
         self.ejecutando = None
         self.reloj = reloj()
         self._quantum_restante = 0
 
-        identificadores = [proceso.Pid for proceso in self.inactivos]
-        if len(identificadores) != len(set(identificadores)):
-            raise ValueError("Cada proceso debe tener un PID único.")
-
-        for proceso in self.inactivos:
-            proceso.estado = "inactivo"
+        for proceso in procesos:
+            if proceso.Tcpu == 0:
+                proceso.estado = "terminado"
+                self.terminados.append(proceso)
+            else:
+                proceso.estado = "listo"
+                self.listos.agregar(proceso)
 
     @property
     def completo(self):
+        """Indica si no quedan procesos listos, ejecutándose o suspendidos."""
         return (
-            not self.inactivos
-            and self.listos.es_vacia()
+            self.listos.es_vacia()
             and self.ejecutando is None
             and self.suspendidos.es_vacia()
         )
 
-    def admitir(self, proceso):
-        if proceso not in self.inactivos:
-            return False
-        self.inactivos.remove(proceso)
-        if proceso.Tcpu == 0:
-            proceso.estado = "terminado"
-            self.terminados.append(proceso)
-        else:
-            proceso.estado = "listo"
-            self.listos.agregar(proceso)
-        return True
-#no soy gay pero soy peruano y tengo una fantasía donde Perú invade Chile
-    def admitir_todos(self):
-        while self.inactivos:
-            self.admitir(self.inactivos[0])
-
+    #no soy gay pero soy peruano y tengo una fantasía donde Perú invade Chile
     def despachar(self):
+        """Selecciona el siguiente proceso listo para usar la CPU."""
         if self.ejecutando is not None:
             return self.ejecutando
         self.ejecutando = self.listos.desencolar()
@@ -54,20 +45,30 @@ class GestorProcesos:
         return self.ejecutando
 
     def bloquear_actual(self, duracion):
+        """Suspende el proceso actual durante una espera de E/S.
+
+        Args:
+            duracion: Cantidad de unidades de tiempo que durará la espera.
+
+        Raises:
+            ValueError: Si la duración no es un entero positivo.
+
+        Returns:
+            True si se suspendió un proceso; False si la CPU estaba inactiva.
+        """
+        if not isinstance(duracion, int) or isinstance(duracion, bool) or duracion <= 0:
+            raise ValueError("La duración de E/S debe ser un entero positivo.")
         if self.ejecutando is None:
             return False
-        if type(duracion) is not int:
-            raise TypeError("La duración del bloqueo debe ser un entero.")
-        if duracion <= 0:
-            raise ValueError("La duración del bloqueo debe ser positiva.")
         proceso = self.ejecutando
         proceso.estado = "suspendido"
-        self.suspendidos.encolar(proceso, self.reloj.tiempo + duracion)
+        self.suspendidos.encolar((proceso, duracion))
         self.ejecutando = None
         self._quantum_restante = 0
         return True
 
     def avanzar(self):
+        """Avanza un tick, actualiza procesos y devuelve el ejecutado."""
         if self.completo:
             return None
 
@@ -96,6 +97,13 @@ class GestorProcesos:
         return proceso_ejecutado
 
     def _avanzar_esperas_es(self):
-        for proceso in self.suspendidos.desencolar_vencidos(self.reloj.tiempo):
-            proceso.estado = "listo"
-            self.listos.agregar(proceso)
+        """Reduce un tick las esperas y devuelve a listos las que terminan."""
+        cantidad = len(self.suspendidos)
+        for _ in range(cantidad):
+            proceso, restante = self.suspendidos.desencolar()
+            restante -= 1
+            if restante == 0:
+                proceso.estado = "listo"
+                self.listos.agregar(proceso)
+            else:
+                self.suspendidos.encolar((proceso, restante))

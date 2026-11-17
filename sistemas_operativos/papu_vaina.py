@@ -1,3 +1,5 @@
+"""Punto de entrada para ejecutar la simulación del gestor de procesos."""
+
 #Aquí empieza este código de cagada 
 import time
 
@@ -8,107 +10,83 @@ from gestor_procesos import GestorProcesos
 PAUSA_SIMULACION = 0.5 #esta en segundos :v
 
 Programas = [
-    programa("Steam", 4050, 3, 5, 10, 3),
-    programa("VLC media player", 1001, 2, 3, 6, 3),
-    programa("Visual Studio Code", 1002, 3, 4, 8, 2),
-    programa("YouTube", 1003, 2, 3, 5, 3),
-    programa("Firefox", 1004, 3, 4, 7, 3),
-    programa("YouTube", 1005, 2, 3, 5, 3),
-    programa("umamusume", 1006, 4, 2, 9, 3),
-    programa("Busca minas", 1011, 5, 1, 5, 3),
-    programa("uTorrent", 1024, 2, 5, 9, 1),
-    programa("ThunderBird", 1025, 3, 5, 9, 2),
-    programa("Amarok", 1035, 4, 5, 6, 3),
-    programa("Krita", 3020, 1, 2, 10, 3),
-    programa("virtual box", 2029, 3, 2, 10, 2),
-    programa("GIMP", 2001, 5, 2, 10, 3),
-    programa("libre office writer", 1029, 5, 2, 10, 2),
+    programa("Steam", 4050, 3, 5, 10),
+    programa("VLC media player", 1001, 2, 3, 6),
+    programa("Visual Studio Code", 1002, 3, 4, 8),
+    programa("YouTube", 1003, 2, 3, 5),
+    programa("Firefox", 1004, 3, 4, 7),
+    programa("YouTube", 1005, 2, 3, 5),
+    programa("umamusume", 1006, 4, 2, 9),
+    programa("Busca minas", 1011, 5, 1, 5),
+    programa("uTorrent", 1024, 2, 5, 9),
+    programa("ThunderBird", 1025, 3, 5, 9),
+    programa("Amarok", 1035, 4, 5, 6),
+    programa("Krita", 3020, 1, 2, 10),
+    programa("virtual box", 2029, 3, 2, 10),
+    programa("GIMP", 2001, 5, 2, 10),
+    programa("libre office writer", 1029, 5, 2, 10),
 ]
+
 #mi cara cuándo uTorrent uwu
 def main():
-    seleccionados = []
-
+    """Muestra el catálogo y permite simular un programa por su PID."""
     while True:
         print("\nProgramas disponibles:")
-        if Programas:
-            for proceso in Programas:
-                print(
-                    f"- {proceso.nombre} (PID: {proceso.Pid}, "
-                    f"interactividad: {proceso.interactividad}/3)"
-                )
-        else:
-            #callate malparido hijueputa de Fabián Gómez 
-            print("- No hay programas disponibles")
+        for proceso in Programas:
+            print(
+                f"PID: {proceso.Pid} | {proceso.nombre} | "
+                f"Prioridad: {proceso.Pr} | Quantum: {proceso.Quantum} | "
+                f"CPU: {proceso.Tcpu}"
+            )
 
-        if seleccionados:
-            print("Seleccionados: " + ", ".join(
-                f"{proceso.nombre} (PID: {proceso.Pid}, "
-                f"interactividad: {proceso.interactividad}/3)"
-                for proceso in seleccionados
-            ))
-
-        opción = input(
-            "Escribir un nombre para añadirlo, ejecutar para iniciar o salir para terminar: "
-        )
-
-        if opción in {"salir", "Salir", "SALIR"}:
+        seleccion = input(
+            "\nEscribe el PID del programa que quieres ejecutar "
+            "o 'salir' para terminar: "
+        ).strip()
+        if seleccion.casefold() == "salir":
             return
 
-        if opción in {"ejecutar", "Ejecutar", "EJECUTAR"}:
-            if not seleccionados:
-                print("No hay procesos añadidos. Añade un proceso pendejo.")
-                continue
-
-            gestor = GestorProcesos(seleccionados)
-            gestor.admitir_todos()
-            print("\nIniciando simulación:")
-            while not gestor.completo:
-                proceso = gestor.avanzar()
-                if proceso is None:
-                    print(
-                        f"[t={gestor.reloj.tiempo}] CPU inactiva; "
-                        "esperando procesos suspendidos."
-                    )
-                else:
-                    print(
-                        f"[t={gestor.reloj.tiempo}] Ejecutando "
-                        f"{proceso.nombre} (PID: {proceso.Pid}) | "
-                        f"Interactividad: {proceso.interactividad}/3 | "
-                        f"CPU restante: {proceso.Tcpu} | "
-                        f"Estado: {proceso.estado}"
-                    )
-                time.sleep(PAUSA_SIMULACION)
-
-            print(f"Simulación finalizada en {gestor.reloj.tiempo} (alguna vaina de tiempo).")
-            for proceso in gestor.terminados:
-                print(
-                    f"Nombre: {proceso.nombre}, PID: {proceso.Pid}, "
-                    f"Prioridad: {proceso.Pr}, Quantum: {proceso.Quantum}, "
-                    f"Interactividad: {proceso.interactividad}/3, "
-                    f"Estado: {proceso.estado}"
-                )
-                proceso.Tcpu = proceso.Tcpu_original
-                proceso.estado = "inactivo"
-                Programas.append(proceso)
-            seleccionados.clear()
-            continue
-        #amooooor, es tan corto el cariño, pero mi amor es tan largo el olvido *inserte ardilla pidiendo 4 de asada*
-
         proceso_seleccionado = next(
-            (
-                proceso for proceso in Programas
-                if proceso.nombre == opción
-            ),
+            (proceso for proceso in Programas if str(proceso.Pid) == seleccion),
             None,
         )
         if proceso_seleccionado is None:
-            print("Escribe bien (┬┬﹏┬┬).")
+            print("No se encontró un programa con ese PID.")
             continue
 
-        Programas.remove(proceso_seleccionado)
-        proceso_seleccionado.estado = "listo"
-        seleccionados.append(proceso_seleccionado)
-        print(f"{proceso_seleccionado.nombre} añadido al gestor.")
+        proceso = programa(
+            proceso_seleccionado.nombre,
+            proceso_seleccionado.Pid,
+            proceso_seleccionado.Pr,
+            proceso_seleccionado.Quantum,
+            proceso_seleccionado.Tcpu,
+        )
+        gestor = GestorProcesos([proceso])
+        print(f"\nIniciando {proceso.nombre} (PID: {proceso.Pid}):")
+
+        while not gestor.completo:
+            proceso_ejecutado = gestor.avanzar()
+            if proceso_ejecutado is None:
+                print(
+                    f"[t={gestor.reloj.tiempo}] CPU inactiva; "
+                    "esperando procesos suspendidos."
+                )
+            else:
+                print(
+                    f"[t={gestor.reloj.tiempo}] Ejecutando "
+                    f"{proceso_ejecutado.nombre} "
+                    f"(PID: {proceso_ejecutado.Pid}) | "
+                    f"CPU restante: {proceso_ejecutado.Tcpu} | "
+                    f"Estado: {proceso_ejecutado.estado}"
+                )
+            time.sleep(PAUSA_SIMULACION)
+
+        print(f"Simulación finalizada en {gestor.reloj.tiempo} unidades de tiempo.")
+        print(
+            f"Nombre: {proceso.nombre}, PID: {proceso.Pid}, "
+            f"Estado: {proceso.estado}"
+        )
+
 
 if __name__ == "__main__":
     main()
