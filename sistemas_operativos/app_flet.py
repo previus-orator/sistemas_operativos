@@ -558,6 +558,10 @@ class VentanaSimulador:
             self._actualizar_vistas()
 
         self.simulacion_activa = False
+        await asyncio.sleep(0.9)  # deja ver el 100 % antes de vaciar el panel de CPU
+        if not self.simulacion_activa:  # nadie arrancó otra simulación mientras tanto
+            self._cpu_instantanea = None
+            self._actualizar_vistas()
 
     # Reloj continuo independiente de la simulación (Cambio 2)
     async def _reloj_continuo(self) -> None:
