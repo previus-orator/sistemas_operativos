@@ -60,6 +60,7 @@ class VentanaSimulador:
         self._procesos_en_simulacion: set[programa] = set()
         self._ciclos_cpu_para_io: dict[programa, int] = {}
         self._vista = None
+        self._cpu_instantanea = None  # foto del proceso que usó la CPU en el último paso
         self._estados_programas: dict[int, ft.Text] = {}
         self._botones_programas: dict[int, ft.FilledButton] = {}
         self._progresos_programas: dict[int, ft.ProgressBar] = {}
@@ -392,16 +393,12 @@ class VentanaSimulador:
 
         self._reloj_texto.value = f"Tiempo Reloj: t={self.gestor.reloj.tiempo}"
 
-        proceso_actual = self.gestor.ejecutando
-        if proceso_actual:
-            self._cpu_nombre.value = f" {proceso_actual.nombre}"
-            self._cpu_detalles.value = (
-                f"PID: {proceso_actual.Pid} | Pr: {proceso_actual.Pr} | "
-                f"Q restante: {self.gestor._quantum_restante} | "
-                f"T.cpu: {proceso_actual.Tcpu} | "
-                f"Interactividad: {proceso_actual.interactividad}/3"
-            )
-            progreso = self._progreso_proceso(proceso_actual)
+        instantanea = self._cpu_instantanea
+        proceso_en_cpu = instantanea["proceso"] if instantanea is not None else None
+        if instantanea is not None:
+            self._cpu_nombre.value = f" {proceso_en_cpu.nombre}"
+            self._cpu_detalles.value = instantanea["detalles"]
+            progreso = instantanea["progreso"]
         else:
             self._cpu_nombre.value = "CPU Inactiva / Esperando Procesos"
             self._cpu_detalles.value = "Ningún proceso en ejecución"
@@ -412,8 +409,12 @@ class VentanaSimulador:
         self._cpu_porcentaje.value = f"{round(progreso * 100)}%"
 
         for proceso in self.programas:
+            en_cpu = (
+                proceso is proceso_en_cpu
+                and proceso not in self.gestor.inactivos
+            )
             self._estados_programas[proceso.Pid].value = (
-                f"Estado: {proceso.estado}"
+                "Estado: ejecutando" if en_cpu else f"Estado: {proceso.estado}"
             )
             avance = self._progreso_proceso(proceso)
             self._progresos_programas[proceso.Pid].value = avance
@@ -454,11 +455,48 @@ class VentanaSimulador:
                 width=220,
             )
             for proceso in self.gestor.listos.arreglo
-            if proceso and proceso.Tcpu > 0
+            if proceso and proceso.Tcpu > 0 and proceso is not proceso_en_cpu
         ]
         self.page.update()
+        
+    #Reinicia los valores cada vez que se añade el programa, no solo al ingresar
+
+    def _asignar_valores_aleatorios(self, proceso: programa) -> None:
+        # Mismos rangos que en __init__
+        usados = {p.Pid for p in self.programas if p is not proceso}
+        pid_anterior = proceso.Pid
+        nuevo_pid = random.randint(1000, 99999)
+        while nuevo_pid in usados:  # el PID no puede repetirse
+            nuevo_pid = random.randint(1000, 99999)
+
+        proceso.Pid = nuevo_pid
+        proceso.Pr = random.randint(1, 5)
+        proceso.Quantum = random.randint(1, 5)
+        proceso.Tcpu = random.randint(5, 10)
+        proceso.Tcpu_original = proceso.Tcpu  # el % de avance y el reinicio al terminar usan este valor
+        proceso.interactividad = random.randint(1, 3)
+
+        # La interfaz guarda sus controles por PID: se pasan a la clave nueva
+        if nuevo_pid != pid_anterior:
+            for controles in (
+                self._estados_programas,
+                self._botones_programas,
+                self._progresos_programas,
+                self._porcentajes_programas,
+                self._detalles_programas,
+            ):
+                controles[nuevo_pid] = controles.pop(pid_anterior)
+
+        # Textos fijos de la tarjeta (se crean una sola vez en _tarjeta_proceso)
+        detalles = self._detalles_programas[nuevo_pid]
+        detalles.controls[0].value = f"Interactividad: {proceso.interactividad}/3"
+        detalles.controls[1].value = f"PID: {proceso.Pid}"
 
     def _enviar_a_cola(self, proceso: programa) -> None:
+        if proceso not in self.gestor.inactivos:  # solo se añade un programa inactivo
+            return
+        # Se sortea ANTES de admitir: listos.agregar ordena con Pr, Quantum y PID al insertar
+        self._asignar_valores_aleatorios(proceso)
         if not self.gestor.admitir(proceso):
             return
         self._procesos_en_simulacion.add(proceso)
@@ -467,6 +505,20 @@ class VentanaSimulador:
         if not self.simulacion_activa:
             self.simulacion_activa = True
             self.page.run_task(self._ejecutar_simulacion)
+            
+            
+    def _instantanea_cpu(self, proceso: programa) -> dict:
+        # Foto del proceso que acaba de usar la CPU, tomada ANTES de reciclar los terminados
+        return {
+            "proceso": proceso,
+            "detalles": (
+                f"PID: {proceso.Pid} | Pr: {proceso.Pr} | "
+                f"Q restante: {self.gestor._quantum_restante} | "
+                f"T.cpu: {proceso.Tcpu} | "
+                f"Interactividad: {proceso.interactividad}/3"
+            ),
+            "progreso": self._progreso_proceso(proceso),
+        }
 
     async def _ejecutar_simulacion(self) -> None:
         while self._procesos_en_simulacion:
@@ -484,8 +536,14 @@ class VentanaSimulador:
                 and self.gestor.bloquear_actual(proceso_actual.interactividad)
             ):
                 self._ciclos_cpu_para_io[proceso_actual] = 0
+                self._cpu_instantanea = None  # se bloqueó: no usó la CPU en este paso
             else:
                 proceso_ejecutado = self.gestor.avanzar()
+                self._cpu_instantanea = (
+                    self._instantanea_cpu(proceso_ejecutado)
+                    if proceso_ejecutado is not None
+                    else None
+                )
                 if proceso_ejecutado is not None and proceso_ejecutado.Tcpu > 0:
                     self._ciclos_cpu_para_io[proceso_ejecutado] += 1
 
@@ -515,10 +573,7 @@ class VentanaSimulador:
     # Alternar pausa/reanudación (Cambio 3)
     def _alternar_pausa(self) -> None:
         self._pausado = not self._pausado
-        if self._pausado:
-            self._boton_pausa.text = "▶"
-        else:
-            self._boton_pausa.text = "⏸"
+        self._boton_pausa.content = "▶" if self._pausado else "⏸"  #Ya realiza el cambio al pulsar pausar y play
         self.page.update()
 
 
