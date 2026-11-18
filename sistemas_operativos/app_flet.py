@@ -56,6 +56,7 @@ class VentanaSimulador:
         ])
         self.programas = list(self.gestor.inactivos)
         self.simulacion_activa = False
+        self._pausado = False  # Bandera para pausar todo (reloj + procesos)
         self._procesos_en_simulacion: set[programa] = set()
         self._ciclos_cpu_para_io: dict[programa, int] = {}
         self._vista = None
@@ -66,6 +67,8 @@ class VentanaSimulador:
         self._detalles_programas: dict[int, ft.Column] = {}
 
         self._actualizar_vistas()
+        # Iniciar reloj continuo al abrir la app
+        self.page.run_task(self._reloj_continuo)
 
     def _tarjeta(self, titulo: str, contenido: ft.Control, expand: int = 1) -> ft.Container:
         return ft.Container(
@@ -151,6 +154,8 @@ class VentanaSimulador:
             on_click=lambda _, seleccionado=proceso: self._enviar_a_cola(
                 seleccionado
             ),
+            # visible=False cuando el proceso ya no está inactivo (Cambio 1)
+            visible=proceso in self.gestor.inactivos,
         )
         self._estados_programas[proceso.Pid] = estado
         self._botones_programas[proceso.Pid] = boton
@@ -210,6 +215,15 @@ class VentanaSimulador:
             size=14,
         )
         self._reloj_texto = reloj
+
+        # Botón pausar/reanudar (Cambio 3)
+        self._boton_pausa = ft.FilledButton(
+            "⏸",
+            style=self._estilo_boton(),
+            on_click=lambda _: self._alternar_pausa(),
+            width=50,
+        )
+
         encabezado = ft.Row(
             [
                 ft.Text(
@@ -220,6 +234,7 @@ class VentanaSimulador:
                     expand=True,
                 ),
                 reloj,
+                self._boton_pausa,  # Botón pausa al lado del reloj
             ],
             alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
         )
@@ -408,8 +423,9 @@ class VentanaSimulador:
             self._detalles_programas[proceso.Pid].visible = (
                 proceso not in self.gestor.inactivos
             )
-            self._botones_programas[proceso.Pid].disabled = (
-                proceso not in self.gestor.inactivos
+            # Ocultar botón en vez de deshabilitar (Cambio 1)
+            self._botones_programas[proceso.Pid].visible = (
+                proceso in self.gestor.inactivos
             )
 
         self._lista_suspendidos.controls = self._tarjetas_suspendidos()
@@ -456,6 +472,10 @@ class VentanaSimulador:
         while self._procesos_en_simulacion:
             await asyncio.sleep(0.9)
 
+            # Si está pausado, esperar sin avanzar (Cambio 3)
+            if self._pausado:
+                continue
+
             proceso_actual = self.gestor.despachar()
             if (
                 proceso_actual is not None
@@ -480,6 +500,26 @@ class VentanaSimulador:
             self._actualizar_vistas()
 
         self.simulacion_activa = False
+
+    # Reloj continuo independiente de la simulación (Cambio 2)
+    async def _reloj_continuo(self) -> None:
+        while True:
+            await asyncio.sleep(0.9)
+            if not self._pausado and not self.simulacion_activa:
+                self.gestor.reloj.avanzar()
+                self._reloj_texto.value = (
+                    f"Tiempo Reloj: t={self.gestor.reloj.tiempo}"
+                )
+                self.page.update()
+
+    # Alternar pausa/reanudación (Cambio 3)
+    def _alternar_pausa(self) -> None:
+        self._pausado = not self._pausado
+        if self._pausado:
+            self._boton_pausa.text = "▶"
+        else:
+            self._boton_pausa.text = "⏸"
+        self.page.update()
 
 
 def main(page: ft.Page) -> None:
